@@ -244,6 +244,12 @@ class SamplingParams(
     """Arbitrary additional args, that can be used by custom sampling
     implementations, plugins, etc. Not used by any in-tree sampling
     implementations."""
+    max_execution_time: float | None = None
+    """Maximum time in seconds that the request can execute before being
+    terminated. Measured from request arrival time. If None, no timeout is
+    applied. Must be positive if provided. When a timeout occurs, the request
+    gracefully returns partial results (tokens generated so far) with
+    finish_reason='timeout'."""
 
     # Fields used for bad words
     bad_words: list[str] | None = None
@@ -284,6 +290,7 @@ class SamplingParams(
         logit_bias: dict[int, float] | dict[str, float] | None = None,
         allowed_token_ids: list[int] | None = None,
         extra_args: dict[str, Any] | None = None,
+        max_execution_time: float | None = None,
     ) -> "SamplingParams":
         if logit_bias is not None:
             # Convert token_id to integer
@@ -335,6 +342,7 @@ class SamplingParams(
             logit_bias=logit_bias,
             allowed_token_ids=allowed_token_ids,
             extra_args=extra_args,
+            max_execution_time=max_execution_time,
         )
 
     def __post_init__(self) -> None:
@@ -507,6 +515,10 @@ class SamplingParams(
             RequestOutputKind.DELTA
         ):
             raise ValueError("best_of must equal n to use output_kind=DELTA")
+        if self.max_execution_time is not None and self.max_execution_time <= 0:
+            raise ValueError(
+                f"max_execution_time must be positive, got {self.max_execution_time}."
+            )
 
     def _verify_greedy_sampling(self) -> None:
         if self.n > 1:

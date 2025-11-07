@@ -57,6 +57,7 @@ class Request:
             sampling_params
         )
         self.arrival_time = arrival_time if arrival_time is not None else time.time()
+        self.arrival_perf_counter = time.perf_counter()
 
         self.status = RequestStatus.WAITING
         self.events: list[EngineCoreEvent] = []
@@ -218,6 +219,7 @@ class RequestStatus(enum.IntEnum):
     FINISHED_STOPPED = enum.auto()
     FINISHED_LENGTH_CAPPED = enum.auto()
     FINISHED_ABORTED = enum.auto()
+    FINISHED_TIMEOUT = enum.auto()
     FINISHED_IGNORED = enum.auto()
 
     def __str__(self):
@@ -240,5 +242,6 @@ _FINISHED_REASON_MAP = {
     RequestStatus.FINISHED_STOPPED: FinishReason.STOP,
     RequestStatus.FINISHED_LENGTH_CAPPED: FinishReason.LENGTH,
     RequestStatus.FINISHED_ABORTED: FinishReason.ABORT,
+    RequestStatus.FINISHED_TIMEOUT: FinishReason.TIMEOUT,
     RequestStatus.FINISHED_IGNORED: FinishReason.LENGTH,
 }

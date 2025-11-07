@@ -18,24 +18,26 @@ from vllm.v1.outputs import LogprobsLists, LogprobsTensors
 
 # These are possible values of RequestOutput.finish_reason,
 # so form part of the external API.
-FINISH_REASON_STRINGS = ("stop", "length", "abort")
+FINISH_REASON_STRINGS = ("stop", "length", "abort", "timeout")
 
 
 class FinishReason(enum.IntEnum):
     """
-    Reason a request finished - stop, length, or abort.
+    Reason a request finished - stop, length, abort, or timeout.
 
     Int rather than Str for more compact serialization.
 
     stop - a stop string was emitted
     length - max_tokens was consumed, or max_model_len was reached
     abort - aborted for another reason
+    timeout - request exceeded max_execution_time
 
     """
 
     STOP = 0
     LENGTH = 1
     ABORT = 2
+    TIMEOUT = 3
 
     def __str__(self):
         return FINISH_REASON_STRINGS[self.value]

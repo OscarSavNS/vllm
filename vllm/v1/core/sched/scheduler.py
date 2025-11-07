@@ -203,6 +203,21 @@ class Scheduler(SchedulerInterface):
         # For logging.
         scheduled_timestamp = time.monotonic()
 
+        # Check for timed-out requests.
+        current_perf_counter = time.perf_counter()
+        timed_out_req_ids: list[str] = []
+        for req_id, request in self.requests.items():
+            if request.status in (RequestStatus.WAITING, RequestStatus.RUNNING):
+                if request.sampling_params is not None:
+                    max_time = request.sampling_params.max_execution_time
+                    if max_time is not None:
+                        elapsed = current_perf_counter - request.arrival_perf_counter
+                        if elapsed > max_time:
+                            timed_out_req_ids.append(req_id)
+
+        if timed_out_req_ids:
+            self.finish_requests(timed_out_req_ids, RequestStatus.FINISHED_TIMEOUT)
+
         # First, schedule the RUNNING requests.
         req_index = 0
         while req_index < len(self.running) and token_budget > 0:
@@ -903,6 +918,33 @@ class Scheduler(SchedulerInterface):
         kv_connector_output = model_runner_output.kv_connector_output
 
         outputs: dict[int, list[EngineCoreOutput]] = defaultdict(list)
+
+        # Generate outputs for requests that finished externally (e.g., timeouts).
+        # These requests were marked as finished in schedule() but didn't run
+        # through the model, so we need to create final outputs for them here.
+        if scheduler_output.finished_req_ids:
+            for req_id in scheduler_output.finished_req_ids:
+                request = self.requests.get(req_id)
+                if request is not None and request.is_finished():
+                    # Only generate output if request still exists and is finished.
+                    # The request might have been scheduled in this step before timing out,
+                    # in which case it will be handled in the normal loop below.
+                    if req_id not in num_scheduled_tokens:
+                        # Request was finished externally without being scheduled.
+                        # Generate a final output with whatever tokens were generated.
+                        outputs[request.client_index].append(
+                            EngineCoreOutput(
+                                request_id=req_id,
+                                new_token_ids=[],  # No new tokens in this step
+                                finish_reason=request.get_finished_reason(),
+                                stop_reason=request.stop_reason,
+                                events=request.take_events(),
+                                trace_headers=request.trace_headers,
+                                num_cached_tokens=request.num_cached_tokens,
+                                num_nans_in_logits=request.num_nans_in_logits,
+                            )
+                        )
+
         spec_decoding_stats: SpecDecodingStats | None = None
         kv_connector_stats: KVConnectorStats | None = (
             kv_connector_output.kv_connector_stats if kv_connector_output else None

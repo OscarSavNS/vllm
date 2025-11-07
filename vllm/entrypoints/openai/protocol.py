@@ -581,6 +581,7 @@ class ChatCompletionRequest(OpenAIBaseModel):
     prompt_logprobs: int | None = None
     allowed_token_ids: list[int] | None = None
     bad_words: list[str] = Field(default_factory=list)
+    max_execution_time: float | None = None
     # --8<-- [end:chat-completion-sampling-params]
 
     # --8<-- [start:chat-completion-extra-params]
@@ -920,6 +921,7 @@ class ChatCompletionRequest(OpenAIBaseModel):
             bad_words=self.bad_words,
             allowed_token_ids=self.allowed_token_ids,
             extra_args=extra_args or None,
+            max_execution_time=self.max_execution_time,
         )
 
     @model_validator(mode="before")
@@ -1120,6 +1122,7 @@ class CompletionRequest(OpenAIBaseModel):
     truncate_prompt_tokens: Annotated[int, Field(ge=-1)] | None = None
     allowed_token_ids: list[int] | None = None
     prompt_logprobs: int | None = None
+    max_execution_time: float | None = None
     # --8<-- [end:completion-sampling-params]
 
     # --8<-- [start:completion-extra-params]
@@ -1405,6 +1408,7 @@ class CompletionRequest(OpenAIBaseModel):
             logit_bias=self.logit_bias,
             allowed_token_ids=self.allowed_token_ids,
             extra_args=extra_args or None,
+            max_execution_time=self.max_execution_time,
         )
 
     @model_validator(mode="before")
