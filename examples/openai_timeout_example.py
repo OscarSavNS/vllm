@@ -24,8 +24,8 @@ response = client.chat.completions.create(
         {"role": "user", "content": "Write a very long story about space exploration."}
     ],
     max_tokens=500,
-    max_execution_time=10.0,  # 10-second timeout
     temperature=0.8,
+    extra_body={"max_execution_time": 10.0},  # 10-second timeout via extra_body
 )
 
 print(f"Response: {response.choices[0].message.content}")
@@ -43,8 +43,8 @@ response = client.completions.create(
     model="facebook/opt-125m",
     prompt="The meaning of life is",
     max_tokens=200,
-    max_execution_time=5.0,  # 5-second timeout
     temperature=0.7,
+    extra_body={"max_execution_time": 5.0},  # 5-second timeout via extra_body
 )
 
 print(f"Response: {response.choices[0].text}")
@@ -64,9 +64,9 @@ stream = client.chat.completions.create(
         {"role": "user", "content": "Count to 100."}
     ],
     max_tokens=500,
-    max_execution_time=3.0,  # 3-second timeout
     temperature=0.8,
     stream=True,
+    extra_body={"max_execution_time": 3.0},  # 3-second timeout via extra_body
 )
 
 print("Streaming response:")
@@ -83,6 +83,7 @@ for chunk in stream:
 print("\n" + "="*80)
 print("\nUsage notes:")
 print("- max_execution_time is in seconds")
+print("- Pass via extra_body parameter when using OpenAI client")
 print("- Includes time spent waiting in queue")
 print("- Works with both streaming and non-streaming requests")
 print("- Returns finish_reason='timeout' when triggered")
