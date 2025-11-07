@@ -14,56 +14,59 @@ client = openai.OpenAI(
     api_key="EMPTY",
 )
 
-print("Example 1: Completion with short timeout to trigger timeout")
+print("Example 1: Completion with generous timeout (should complete normally)")
 print("="*80)
 
-# Text completion with very short timeout to demonstrate timeout behavior
+# Text completion with generous timeout - should complete successfully
 response = client.completions.create(
     model="facebook/opt-125m",
-    prompt="Write a very long story about space exploration:",
-    max_tokens=500,  # Request many tokens
-    temperature=0.8,
-    extra_body={"max_execution_time": 0.5},  # Very short timeout (0.5s) to trigger timeout
-)
-
-print(f"Response: {response.choices[0].text[:200]}...")  # Show first 200 chars
-print(f"Finish reason: {response.choices[0].finish_reason}")
-
-if response.choices[0].finish_reason == "timeout":
-    print("✓ This request timed out as expected!")
-    print("  Note: Partial results were still returned.")
-
-print("\n" + "="*80)
-print("Example 2: Completion with sufficient timeout (no timeout expected)")
-print("="*80)
-
-# Text completion with reasonable timeout - should complete normally
-response = client.completions.create(
-    model="facebook/opt-125m",
-    prompt="The meaning of life is",
+    prompt="The capital of France is",
     max_tokens=50,
     temperature=0.7,
-    extra_body={"max_execution_time": 30.0},  # Generous timeout
+    extra_body={"max_execution_time": 30.0},  # Generous 30-second timeout
 )
 
 print(f"Response: {response.choices[0].text}")
 print(f"Finish reason: {response.choices[0].finish_reason}")
 
 if response.choices[0].finish_reason != "timeout":
-    print("✓ Request completed normally within timeout window.")
+    print("✓ Request completed normally within timeout window!")
 
 print("\n" + "="*80)
-print("Example 3: Streaming completion with timeout")
+print("Example 2: Completion with tight timeout (may timeout)")
 print("="*80)
 
-# Streaming with timeout
+# Text completion with short timeout to demonstrate timeout behavior
+# Note: Depending on system load, this may or may not timeout
+response = client.completions.create(
+    model="facebook/opt-125m",
+    prompt="Write a long story:",
+    max_tokens=200,
+    temperature=0.8,
+    extra_body={"max_execution_time": 2.0},  # 2-second timeout
+)
+
+print(f"Response: {response.choices[0].text[:150]}...")  # Show first 150 chars
+print(f"Finish reason: {response.choices[0].finish_reason}")
+
+if response.choices[0].finish_reason == "timeout":
+    print("⚠️  This request timed out!")
+    print("   Note: Partial results were still returned (graceful timeout).")
+else:
+    print("✓ Request completed within timeout window.")
+
+print("\n" + "="*80)
+print("Example 3: Streaming completion")
+print("="*80)
+
+# Streaming with generous timeout
 stream = client.completions.create(
     model="facebook/opt-125m",
-    prompt="Count from 1 to 100:",
-    max_tokens=500,
-    temperature=0.8,
+    prompt="Count from 1 to 10:",
+    max_tokens=100,
+    temperature=0.7,
     stream=True,
-    extra_body={"max_execution_time": 1.0},  # Short timeout to demonstrate streaming timeout
+    extra_body={"max_execution_time": 30.0},  # Generous timeout
 )
 
 print("Streaming response:")
@@ -75,8 +78,9 @@ for chunk in stream:
     if chunk.choices[0].finish_reason:
         print(f"\n\nFinish reason: {chunk.choices[0].finish_reason}")
         if chunk.choices[0].finish_reason == "timeout":
-            print("✓ Stream was terminated due to timeout as expected!")
-            print("  Note: Partial streaming results were still returned.")
+            print("⚠️  Stream was terminated due to timeout!")
+        else:
+            print("✓ Stream completed normally!")
 
 print("\n" + "="*80)
 print("\nUsage notes:")
