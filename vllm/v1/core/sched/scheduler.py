@@ -206,6 +206,9 @@ class Scheduler(SchedulerInterface):
         # Check for timed-out requests.
         current_perf_counter = time.perf_counter()
         timed_out_req_ids: list[str] = []
+        # Save timed-out Request objects before finish_requests() deletes them
+        timed_out_requests: dict[str, Request] = {}
+
         for req_id, request in self.requests.items():
             if request.status in (RequestStatus.WAITING, RequestStatus.RUNNING):
                 if request.sampling_params is not None:
@@ -214,6 +217,7 @@ class Scheduler(SchedulerInterface):
                         elapsed = current_perf_counter - request.arrival_perf_counter
                         if elapsed > max_time:
                             timed_out_req_ids.append(req_id)
+                            timed_out_requests[req_id] = request
 
         if timed_out_req_ids:
             self.finish_requests(timed_out_req_ids, RequestStatus.FINISHED_TIMEOUT)
@@ -652,6 +656,8 @@ class Scheduler(SchedulerInterface):
             # the previous and the current steps.
             finished_req_ids=self.finished_req_ids,
             free_encoder_mm_hashes=self.encoder_cache_manager.get_freed_mm_hashes(),
+            # Pass timed-out Request objects so update_from_output can generate outputs
+            timed_out_requests=timed_out_requests if timed_out_requests else None,
         )
 
         # NOTE(Kuntai): this function is designed for multiple purposes:
@@ -922,8 +928,33 @@ class Scheduler(SchedulerInterface):
         # Generate outputs for requests that finished externally (e.g., timeouts).
         # These requests were marked as finished in schedule() but didn't run
         # through the model, so we need to create final outputs for them here.
+
+        # First, check for timed-out requests that were saved in scheduler_output
+        if scheduler_output.timed_out_requests:
+            for req_id, request in scheduler_output.timed_out_requests.items():
+                if req_id not in num_scheduled_tokens:
+                    # Request timed out without being scheduled in this step.
+                    # Generate a final output with whatever tokens were generated.
+                    outputs[request.client_index].append(
+                        EngineCoreOutput(
+                            request_id=req_id,
+                            new_token_ids=[],  # No new tokens in this step
+                            finish_reason=request.get_finished_reason(),
+                            stop_reason=request.stop_reason,
+                            events=request.take_events(),
+                            trace_headers=request.trace_headers,
+                            num_cached_tokens=request.num_cached_tokens,
+                            num_nans_in_logits=request.num_nans_in_logits,
+                        )
+                    )
+
+        # Also check finished_req_ids for other types of finished requests
         if scheduler_output.finished_req_ids:
             for req_id in scheduler_output.finished_req_ids:
+                # Skip timed-out requests as they're handled above
+                if scheduler_output.timed_out_requests and req_id in scheduler_output.timed_out_requests:
+                    continue
+
                 request = self.requests.get(req_id)
                 if request is not None and request.is_finished():
                     # Only generate output if request still exists and is finished.
@@ -970,6 +1001,9 @@ class Scheduler(SchedulerInterface):
         stopped_preempted_reqs: set[Request] = set()
         for req_id, num_tokens_scheduled in num_scheduled_tokens.items():
             assert num_tokens_scheduled > 0
+            # Skip requests that timed out - they already have final outputs generated
+            if scheduler_output.timed_out_requests and req_id in scheduler_output.timed_out_requests:
+                continue
             if failed_kv_load_req_ids and req_id in failed_kv_load_req_ids:
                 # Skip requests that were recovered from KV load failure
                 continue

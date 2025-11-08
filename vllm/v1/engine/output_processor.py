@@ -102,6 +102,7 @@ class RequestState:
         top_p: float | None = None,
         n: int | None = None,
         temperature: float | None = None,
+        max_execution_time: float | None = None,
     ):
         self.request_id = request_id
         self.parent_req = parent_req
@@ -120,6 +121,8 @@ class RequestState:
         self.top_p = top_p
         self.n = n
         self.temperature = temperature
+        self.max_execution_time = max_execution_time
+        self.arrival_time = arrival_time
         self.is_prefilling = True
         self.queue = queue
         self.num_cached_tokens = 0
@@ -153,6 +156,7 @@ class RequestState:
             top_p = sampling_params.top_p
             n = sampling_params.n
             temperature = sampling_params.temperature
+            max_execution_time = sampling_params.max_execution_time
         else:
             logprobs_processor = None
             detokenizer = None
@@ -160,6 +164,7 @@ class RequestState:
             top_p = None
             n = None
             temperature = None
+            max_execution_time = None
             assert request.pooling_params is not None
             output_kind = request.pooling_params.output_kind
 
@@ -180,6 +185,7 @@ class RequestState:
             top_p=top_p,
             n=n,
             temperature=temperature,
+            max_execution_time=max_execution_time,
             arrival_time=request.arrival_time,
             queue=queue,
             log_stats=log_stats,
@@ -416,12 +422,36 @@ class OutputProcessor:
 
         request_outputs: list[RequestOutput | PoolingRequestOutput] = []
         reqs_to_abort: list[str] = []
+
+        # First pass: identify which requests have finished (especially timeouts)
+        # so we can filter out stale outputs that might be in the queue
+        finished_req_ids_in_batch: set[str] = set()
         for engine_core_output in engine_core_outputs:
+            if engine_core_output.finish_reason is not None:
+                finished_req_ids_in_batch.add(engine_core_output.request_id)
+
+        for engine_core_output in engine_core_outputs:
+
             req_id = engine_core_output.request_id
             req_state = self.request_states.get(req_id)
             if req_state is None:
                 # Ignore output for already-aborted request.
                 continue
+
+            # Skip stale outputs for requests that have a final output in this batch
+            if (engine_core_output.finish_reason is None
+                and req_id in finished_req_ids_in_batch):
+                continue
+
+            # Skip stale outputs for requests that have already timed out but we
+            # haven't processed the timeout output yet (multiprocess async queue issue)
+            if (engine_core_output.finish_reason is None and
+                req_state.max_execution_time is not None):
+                import time
+                # Note: arrival_time uses time.time(), not time.perf_counter()
+                elapsed = time.time() - req_state.arrival_time
+                if elapsed > req_state.max_execution_time:
+                    continue
 
             # 1) Compute stats for this iteration.
             self._update_stats_from_output(
@@ -452,13 +482,15 @@ class OutputProcessor:
                 req_state.logprobs_processor.update_from_output(engine_core_output)
 
             # 4) Create and handle RequestOutput objects.
-            if request_output := req_state.make_request_output(
+            request_output = req_state.make_request_output(
                 new_token_ids,
                 pooling_output,
                 finish_reason,
                 stop_reason,
                 kv_transfer_params,
-            ):
+            )
+
+            if request_output:
                 if req_state.queue is not None:
                     # AsyncLLM: put into queue for handling by generate().
                     req_state.queue.put(request_output)

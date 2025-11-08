@@ -43,10 +43,10 @@ response = client.completions.create(
     prompt="Write a long story:",
     max_tokens=200,
     temperature=0.8,
-    extra_body={"max_execution_time": 2.0},  # 2-second timeout
+    extra_body={"max_execution_time": 0.5},  # 0.5 second timeout
 )
 
-print(f"Response: {response.choices[0].text[:150]}...")  # Show first 150 chars
+print(f"Response: {response.choices[0].text}...")  # Show first 150 chars
 print(f"Finish reason: {response.choices[0].finish_reason}")
 
 if response.choices[0].finish_reason == "timeout":
