@@ -1050,7 +1050,11 @@ class Scheduler(SchedulerInterface):
 
             # Get prompt logprobs for this request.
             prompt_logprobs_tensors = prompt_logprobs_dict.get(req_id)
-            if new_token_ids or pooler_output is not None or kv_transfer_params:
+            # Send output if: we have new tokens, pooler output, KV transfer, OR
+            # the request is finished (including timeouts) - we must send a final
+            # output to notify the client that the request completed.
+            if (new_token_ids or pooler_output is not None or kv_transfer_params
+                    or request.is_finished()):
                 # Add EngineCoreOutput for this Request.
                 outputs[request.client_index].append(
                     EngineCoreOutput(
