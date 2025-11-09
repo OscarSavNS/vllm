@@ -423,8 +423,7 @@ class OutputProcessor:
         request_outputs: list[RequestOutput | PoolingRequestOutput] = []
         reqs_to_abort: list[str] = []
 
-        # First pass: identify which requests have finished (especially timeouts)
-        # so we can filter out stale outputs that might be in the queue
+        # Identify finished requests to filter out stale outputs from async queue.
         finished_req_ids_in_batch: set[str] = set()
         for engine_core_output in engine_core_outputs:
             if engine_core_output.finish_reason is not None:
@@ -435,20 +434,17 @@ class OutputProcessor:
             req_id = engine_core_output.request_id
             req_state = self.request_states.get(req_id)
             if req_state is None:
-                # Ignore output for already-aborted request.
                 continue
 
-            # Skip stale outputs for requests that have a final output in this batch
+            # Skip stale outputs for requests with final output in this batch.
             if (engine_core_output.finish_reason is None
                 and req_id in finished_req_ids_in_batch):
                 continue
 
-            # Skip stale outputs for requests that have already timed out but we
-            # haven't processed the timeout output yet (multiprocess async queue issue)
+            # Skip stale outputs for requests that already timed out.
             if (engine_core_output.finish_reason is None and
                 req_state.max_execution_time is not None):
                 import time
-                # Note: arrival_time uses time.time(), not time.perf_counter()
                 elapsed = time.time() - req_state.arrival_time
                 if elapsed > req_state.max_execution_time:
                     continue

@@ -1737,27 +1737,27 @@ class LLM:
             for output in step_outputs:
                 if output.finished:
                     outputs.append(output)
-                else:
-                    if use_tqdm:
-                        if isinstance(output, RequestOutput):
-                            # Calculate tokens only for RequestOutput
-                            n = len(output.outputs)
-                            assert output.prompt_token_ids is not None
-                            total_in_toks += len(output.prompt_token_ids) * n
-                            in_spd = total_in_toks / pbar.format_dict["elapsed"]
-                            total_out_toks += sum(
-                                len(stp.token_ids) for stp in output.outputs
-                            )
-                            out_spd = total_out_toks / pbar.format_dict["elapsed"]
-                            pbar.postfix = (
-                                f"est. speed input: {in_spd:.2f} toks/s, "
-                                f"output: {out_spd:.2f} toks/s"
-                            )
-                            pbar.update(n)
-                        else:
-                            pbar.update(1)
-                        if pbar.n == num_requests:
-                            pbar.refresh()
+
+                if use_tqdm and not output.finished:
+                    if isinstance(output, RequestOutput):
+                        # Calculate tokens only for RequestOutput
+                        n = len(output.outputs)
+                        assert output.prompt_token_ids is not None
+                        total_in_toks += len(output.prompt_token_ids) * n
+                        in_spd = total_in_toks / pbar.format_dict["elapsed"]
+                        total_out_toks += sum(
+                            len(stp.token_ids) for stp in output.outputs
+                        )
+                        out_spd = total_out_toks / pbar.format_dict["elapsed"]
+                        pbar.postfix = (
+                            f"est. speed input: {in_spd:.2f} toks/s, "
+                            f"output: {out_spd:.2f} toks/s"
+                        )
+                        pbar.update(n)
+                    else:
+                        pbar.update(1)
+                    if pbar.n == num_requests:
+                        pbar.refresh()
 
         if use_tqdm:
             pbar.close()

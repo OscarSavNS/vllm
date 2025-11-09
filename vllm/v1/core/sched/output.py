@@ -181,9 +181,7 @@ class SchedulerOutput:
     # freed from the encoder cache.
     free_encoder_mm_hashes: list[str]
 
-    # Dictionary of timed-out Request objects. These requests were marked as
-    # finished due to timeout and removed from self.requests, but we need to
-    # keep them to generate final EngineCoreOutputs with timeout finish_reason.
+    # Timed-out Request objects needed to generate final outputs.
     timed_out_requests: dict[str, "Request"] | None = None
 
     # Whether the scheduled requests have all the output tokens they

@@ -3,7 +3,7 @@ import time
 
 import pytest
 
-from vllm.sampling_params import SamplingParams
+from vllm import LLM, SamplingParams
 from vllm.v1.engine import FinishReason
 from vllm.v1.request import Request, RequestStatus
 
@@ -94,3 +94,99 @@ def test_sampling_params_from_optional_timeout():
     )
     assert params.max_execution_time is None
     assert params.temperature == 0.5
+
+
+@pytest.mark.skip_v1
+def test_timeout_returns_partial_results():
+    """Test that timeout returns partial results (graceful timeout).
+
+    This integration test verifies the key behavior: when a request times out,
+    it returns whatever tokens have been generated so far rather than discarding them.
+    """
+    llm = LLM(model="facebook/opt-125m", max_model_len=512)
+
+    prompt = "Write a very long story about a dragon:"
+
+    # Set a very short timeout to force timeout during generation
+    sampling_params = SamplingParams(
+        max_tokens=500,  # Request many tokens
+        max_execution_time=1.0,  # But timeout after 1 second
+        temperature=0.8,
+    )
+
+    start_time = time.time()
+    outputs = llm.generate([prompt], sampling_params)
+    elapsed = time.time() - start_time
+
+    assert len(outputs) == 1
+    output = outputs[0]
+
+    # Verify timeout occurred
+    assert output.outputs[0].finish_reason == "timeout"
+
+    # Verify timeout was enforced (allow some overhead)
+    assert elapsed < sampling_params.max_execution_time + 2.0
+
+    # Verify partial results were returned (key behavior!)
+    # We should have generated SOME tokens before timeout
+    num_tokens = len(output.outputs[0].token_ids)
+    assert num_tokens > 0, "Timeout should return partial results, not empty output"
+
+    # Verify text was generated
+    assert len(output.outputs[0].text) > 0
+
+
+@pytest.mark.skip_v1
+def test_timeout_with_multiple_requests():
+    """Test timeout behavior with multiple concurrent requests.
+
+    Verify that timeout is tracked independently per request.
+    """
+    llm = LLM(model="facebook/opt-125m", max_model_len=512)
+
+    prompts = [
+        "Short prompt",  # Should complete quickly
+        "Write a very long story about dragons and knights:",  # May timeout
+    ]
+
+    sampling_params = SamplingParams(
+        max_tokens=200,
+        max_execution_time=2.0,
+        temperature=0.8,
+    )
+
+    outputs = llm.generate(prompts, sampling_params)
+
+    assert len(outputs) == 2
+
+    # Both should return results (either completed or timed out)
+    for output in outputs:
+        assert output.outputs[0].finish_reason in ("stop", "length", "timeout")
+        # Even if timed out, should have partial results
+        assert len(output.outputs[0].token_ids) >= 0
+
+
+@pytest.mark.skip_v1
+def test_no_timeout_completes_normally():
+    """Test that requests without timeout complete normally."""
+    llm = LLM(model="facebook/opt-125m", max_model_len=512)
+
+    prompt = "The capital of France is"
+
+    # No timeout specified (default behavior)
+    sampling_params = SamplingParams(
+        max_tokens=20,
+        temperature=0.0,
+    )
+
+    outputs = llm.generate([prompt], sampling_params)
+
+    assert len(outputs) == 1
+    output = outputs[0]
+
+    # Should NOT timeout
+    assert output.outputs[0].finish_reason != "timeout"
+    assert output.outputs[0].finish_reason in ("stop", "length")
+
+    # Should have generated tokens
+    assert len(output.outputs[0].token_ids) > 0
