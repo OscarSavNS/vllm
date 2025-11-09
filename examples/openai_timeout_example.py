@@ -58,27 +58,33 @@ for chunk in stream:
         else:
             print("✓ Stream completed normally")
 
-# Example 3: Chat completion with timeout
+# Example 3: Short timeout to demonstrate timeout behavior
 print("\n" + "=" * 80)
-print("Example 3: Chat completion with 30-second timeout")
+print("Example 3: Completion with very short timeout (0.1s)")
 print("=" * 80)
 
-response = client.chat.completions.create(
-    model="facebook/opt-125m",
-    messages=[
-        {"role": "user", "content": "What is the meaning of life?"}
-    ],
-    max_tokens=50,
-    temperature=0.7,
-    extra_body={"max_execution_time": 30.0},
-)
+try:
+    response = client.completions.create(
+        model="facebook/opt-125m",
+        prompt="Write a very detailed story about space exploration:",
+        max_tokens=500,
+        temperature=0.8,
+        extra_body={"max_execution_time": 0.1},  # Very short timeout
+    )
 
-print(f"Response: {response.choices[0].message.content}")
-print(f"Finish reason: {response.choices[0].finish_reason}")
+    print(f"Response: {response.choices[0].text[:100]}...")
+    print(f"Finish reason: {response.choices[0].finish_reason}")
+
+    if response.choices[0].finish_reason == "timeout":
+        print("⚠️  Request timed out (partial results returned)")
+    else:
+        print("✓ Request completed within timeout window")
+except Exception as e:
+    print(f"Error: {e}")
 
 print("\n" + "=" * 80)
 print("\nUsage notes:")
 print("- Pass timeout via extra_body={'max_execution_time': seconds}")
-print("- Works with completions, chat, and streaming endpoints")
+print("- Works with completions and streaming endpoints")
 print("- Returns partial results with finish_reason='timeout'")
 print("- Omit parameter for no timeout (default)")
